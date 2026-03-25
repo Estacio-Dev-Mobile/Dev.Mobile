@@ -1,167 +1,430 @@
-import React, { useState } from 'react';
-import { 
-  StyleSheet, Text, View, TextInput, TouchableOpacity, 
-  FlatList, KeyboardAvoidingView, Platform, Alert, SafeAreaView 
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  FlatList,
+  SafeAreaView,
+  BackHandler,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-//  MENU PRINCIPAL
-const TelaSelecao = ({ aoSelecionar }) => (
-  <View style={styles.contentSelecao}>
-    <Text style={styles.tituloLogo}>DemandFlow</Text>
-    <Text style={styles.subtitulo}>Escolha o setor de atendimento:</Text>
-    <View style={styles.grid}>
-      {[
-        { tipo: 'Barbeiro', emoji: '💈' },
-        { tipo: 'Salão de Beleza', emoji: '💇‍♀️' },
-        { tipo: 'Manicure', emoji: '💅' }
-      ].map((item) => (
-        <TouchableOpacity 
-          key={item.tipo} 
-          style={styles.cardEscolha} 
-          onPress={() => aoSelecionar(item.tipo)}
-        >
-          <Text style={styles.emojiCard}>{item.emoji}</Text>
-          <Text style={styles.cardTexto}>{item.tipo}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  </View>
-);
+// USER ADMIN PADRÃO - SEGURANÇA E TUDO //
+const ADMIN = { user: 'admin', senha: 'admin123', tipo: 'admin' };
 
-// PAINEL  DE GESTÃO 
-const TelaAdmin = ({ perfil, agendamentos, setAgendamentos, aoVoltar }) => {
-  const [nome, setNome] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [servico, setServico] = useState('');
-  const [valor, setValor] = useState('');
-  const [dataHora, setDataHora] = useState('');
+export default function App() {
+  const [tela, setTela] = useState('login');
+  const [usuarioLogado, setUsuarioLogado] = useState(null);
+  const [usuarios, setUsuarios] = useState([]);
+  const [agendamentos, setAgendamentos] = useState([]);
 
-  const salvarAgendamento = () => {
-    if (!nome || !servico || !valor || !dataHora) {
-      Alert.alert("Atenção", "Preencha todos os campos obrigatórios.");
-      return;
-    }
+  // CARREGAR DADOS
+  useEffect(() => {
+    carregarDados();
+  }, []);
 
-    const novo = {
-      id: Date.now().toString(),
-      perfilPertencente: perfil, // Perfil vendedor
-      nome,
-      telefone,
-      servico,
-      valor,
-      dataHora,
-      timestamp: Date.now()
-    };
+  const carregarDados = async () => {
+    const u = await AsyncStorage.getItem('usuarios');
+    const a = await AsyncStorage.getItem('agendamentos');
 
-    setAgendamentos([novo, ...agendamentos]);
-    setNome(''); setTelefone(''); setServico(''); setValor(''); setDataHora('');
+    if (u) setUsuarios(JSON.parse(u));
+    if (a) setAgendamentos(JSON.parse(a));
   };
 
-  // mostrar os agendamentos 
-  const agendamentosFiltrados = agendamentos
-    .filter(item => item.perfilPertencente === perfil)
-    .sort((a, b) => b.timestamp - a.timestamp);
+  const salvarUsuarios = async (lista) => {
+    setUsuarios(lista);
+    await AsyncStorage.setItem('usuarios', JSON.stringify(lista));
+  };
+
+  const salvarAgendamentos = async (lista) => {
+    setAgendamentos(lista);
+    await AsyncStorage.setItem('agendamentos', JSON.stringify(lista));
+  };
+
+  // BOTÃO VOLTAR
+  useEffect(() => {
+    const back = () => {
+      if (tela === 'adminPanel' || tela === 'agenda') {
+        setTela('menu');
+        return true;
+      }
+      if (tela === 'menu') {
+        setTela('login');
+        return true;
+      }
+      return false;
+    };
+
+    const handler = BackHandler.addEventListener('hardwareBackPress', back);
+    return () => handler.remove();
+  }, [tela]);
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-      <View style={styles.headerAdmin}>
-        <TouchableOpacity onPress={aoVoltar} style={styles.btnVoltar}>
-          <Text style={styles.voltarLink}>← Mudar Setor</Text>
-        </TouchableOpacity>
-        <Text style={styles.tituloAdmin}>{perfil}</Text>
-      </View>
+    <SafeAreaView style={{ flex: 1 }}>
+      {tela === 'login' && (
+        <TelaLogin
+          usuarios={usuarios}
+          onLogin={(user) => {
+            setUsuarioLogado(user);
+            setTela('menu');
+          }}
+        />
+      )}
 
-      <View style={styles.formContainer}>
-        <TextInput style={styles.input} placeholder="Nome do Cliente" value={nome} onChangeText={setNome} />
-        <View style={styles.row}>
-          <TextInput style={[styles.input, { flex: 1.5, marginRight: 10 }]} placeholder="Data/Hora" value={dataHora} onChangeText={setDataHora} />
-          <TextInput style={[styles.input, { flex: 1 }]} placeholder="Telefone" keyboardType="phone-pad" value={telefone} onChangeText={setTelefone} />
-        </View>
-        <View style={styles.row}>
-          <TextInput style={[styles.input, { flex: 2, marginRight: 10 }]} placeholder="Serviço" value={servico} onChangeText={setServico} />
-          <TextInput style={[styles.input, { flex: 1 }]} placeholder="R$" keyboardType="numeric" value={valor} onChangeText={setValor} />
-        </View>
-        <TouchableOpacity style={styles.botaoSalvar} onPress={salvarAgendamento}>
-          <Text style={styles.botaoTexto}>Confirmar no {perfil}</Text>
-        </TouchableOpacity>
-      </View>
+      {tela === 'menu' && (
+        <Menu
+          user={usuarioLogado}
+          irAdmin={() => setTela('adminPanel')}
+          irAgenda={() => setTela('agenda')}
+          sair={() => setTela('login')}
+        />
+      )}
 
-      <View style={styles.tabelaHeader}>
-        <Text style={styles.tabelaHeaderTexto}>HORÁRIO / CLIENTE</Text>
-        <Text style={styles.tabelaHeaderTexto}>SERVIÇO</Text>
-        <Text style={[styles.tabelaHeaderTexto, { textAlign: 'right' }]}>VALOR</Text>
-      </View>
+      {tela === 'adminPanel' && (
+        <AdminPanel
+          usuarios={usuarios}
+          salvarUsuarios={salvarUsuarios}
+          voltar={() => setTela('menu')}
+        />
+      )}
 
-      <FlatList 
-        data={agendamentosFiltrados}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.tabelaLinha}>
-            <View style={{ flex: 1.5 }}>
-              <Text style={styles.tabelaData}>{item.dataHora}</Text>
-              <Text style={styles.tabelaTextoNome}>{item.nome}</Text>
-            </View>
-            <View style={{ flex: 1.5 }}>
-              <Text style={styles.tabelaTextoServico}>{item.servico}</Text>
-              <Text style={styles.tabelaTextoSub}>{item.telefone}</Text>
-            </View>
-            <View style={{ flex: 1, alignItems: 'flex-end' }}>
-              <Text style={styles.tabelaTextoValor}>R$ {item.valor}</Text>
-            </View>
-          </View>
-        )}
-        ListEmptyComponent={<Text style={styles.vazio}>Nenhum agendamento para {perfil}.</Text>}
-      />
-    </KeyboardAvoidingView>
-  );
-};
-
-//  Componete principal
-export default function App() {
-  const [perfilAtivo, setPerfilAtivo] = useState(null);
-  // lista de agendamentos 
-  const [todosAgendamentos, setTodosAgendamentos] = useState([]);
-
-  return (
-    <SafeAreaView style={styles.container}>
-      {!perfilAtivo ? (
-        <TelaSelecao aoSelecionar={setPerfilAtivo} />
-      ) : (
-        <TelaAdmin 
-          perfil={perfilAtivo} 
-          agendamentos={todosAgendamentos} 
-          setAgendamentos={setTodosAgendamentos}
-          aoVoltar={() => setPerfilAtivo(null)} 
+      {tela === 'agenda' && (
+        <Agenda
+          user={usuarioLogado}
+          agendamentos={agendamentos}
+          salvarAgendamentos={salvarAgendamentos}
+          voltar={() => setTela('menu')}
         />
       )}
     </SafeAreaView>
   );
 }
 
+// Tela de LOGIN
+const TelaLogin = ({ usuarios, onLogin }) => {
+  const [user, setUser] = useState('');
+  const [senha, setSenha] = useState('');
+
+  const logar = () => {
+    if (user === ADMIN.user && senha === ADMIN.senha) {
+      onLogin(ADMIN);
+      return;
+    }
+
+    const encontrado = usuarios.find(
+      (u) => u.user === user && u.senha === senha
+    );
+
+    if (encontrado) {
+      onLogin(encontrado);
+    } else {
+      Alert.alert('Erro', 'Login inválido');
+    }
+  };
+
+  return (
+    <View style={styles.center}>
+      <Text style={styles.title}>DemandFlow</Text>
+
+      <TextInput
+        placeholder="Usuário"
+        style={styles.input}
+        onChangeText={setUser}
+      />
+      <TextInput
+        placeholder="Senha"
+        secureTextEntry
+        style={styles.input}
+        onChangeText={setSenha}
+      />
+
+      <TouchableOpacity style={styles.btn} onPress={logar}>
+        <Text style={styles.btnText}>Entrar</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// MENU
+const Menu = ({ user, irAdmin, irAgenda, sair }) => (
+  <View style={styles.center}>
+    <Text style={styles.title}>Bem-vindo {user?.user || ''}</Text>
+
+    {user.tipo === 'admin' && (
+      <TouchableOpacity style={styles.card} onPress={irAdmin}>
+        <Text>👑 Gerenciar Funcionários</Text>
+      </TouchableOpacity>
+    )}
+
+    <TouchableOpacity style={styles.card} onPress={irAgenda}>
+      <Text>📅 Agenda</Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity style={styles.btn} onPress={sair}>
+      <Text style={styles.btnText}>Sair</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+// ADMIN PANEL
+const AdminPanel = ({ usuarios, salvarUsuarios, voltar }) => {
+  const [novoUser, setNovoUser] = useState('');
+  const [senha, setSenha] = useState('');
+
+  const cadastrar = () => {
+    if (!novoUser || !senha) return Alert.alert('Erro');
+
+    const novo = { user: novoUser, senha, tipo: 'funcionario' };
+    salvarUsuarios([...usuarios, novo]);
+
+    setNovoUser('');
+    setSenha('');
+  };
+
+  return (
+    <View style={styles.container}>
+      <TouchableOpacity onPress={voltar}>
+        <Text style={styles.voltar}>← Voltar</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.title}>Cadastrar Funcionário</Text>
+
+      <TextInput
+        placeholder="Usuário"
+        style={styles.input}
+        value={novoUser}
+        onChangeText={setNovoUser}
+      />
+      <TextInput
+        placeholder="Senha"
+        style={styles.input}
+        value={senha}
+        onChangeText={setSenha}
+      />
+
+      <TouchableOpacity style={styles.btn} onPress={cadastrar}>
+        <Text style={styles.btnText}>Cadastrar</Text>
+      </TouchableOpacity>
+
+      <FlatList
+        data={usuarios}
+        keyExtractor={(item, i) => i.toString()}
+        renderItem={({ item }) => <Text>{item.user}</Text>}
+      />
+    </View>
+  );
+};
+
+// TELA DE AGENDA
+const Agenda = ({ user, agendamentos, salvarAgendamentos, voltar }) => {
+  const [nome, setNome] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [dataHora, setDataHora] = useState('');
+  const [valor, setValor] = useState('');
+
+  const salvar = () => {
+    if (!nome || !telefone || !dataHora || !valor) {
+      Alert.alert('Erro', 'Preencha todos os campos');
+      return;
+    }
+
+    const novo = {
+      id: Date.now().toString(),
+      user: user.user,
+      nome,
+      telefone,
+      dataHora,
+      valor,
+      timestamp: Date.now(),
+    };
+
+    salvarAgendamentos([novo, ...agendamentos]);
+
+    setNome('');
+    setTelefone('');
+    setDataHora('');
+    setValor('');
+  };
+
+  // ADMIN vê tudo / funcionário só o dele
+  const lista =
+    user.tipo === 'admin'
+      ? [...agendamentos].sort((a, b) => b.timestamp - a.timestamp)
+      : agendamentos
+          .filter((a) => a.user === user.user)
+          .sort((a, b) => b.timestamp - a.timestamp);
+  return (
+    <View style={styles.container}>
+      {/* VOLTAR */}
+      <TouchableOpacity onPress={voltar}>
+        <Text style={styles.voltar}>← Voltar</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.title}>Agenda</Text>
+
+      {/* FORM */}
+      <TextInput
+        placeholder="Nome do Cliente"
+        style={styles.input}
+        value={nome}
+        onChangeText={setNome}
+      />
+      <TextInput
+        placeholder="Telefone"
+        style={styles.input}
+        value={telefone}
+        onChangeText={setTelefone}
+        keyboardType="phone-pad"
+      />
+      <TextInput
+        placeholder="Data/Hora (ex: 25/03 14:00)"
+        style={styles.input}
+        value={dataHora}
+        onChangeText={setDataHora}
+      />
+      <TextInput
+        placeholder="Valor (R$)"
+        style={styles.input}
+        value={valor}
+        onChangeText={setValor}
+        keyboardType="numeric"
+      />
+
+      <TouchableOpacity style={styles.btn} onPress={salvar}>
+        <Text style={styles.btnText}>Salvar Agendamento</Text>
+      </TouchableOpacity>
+
+      {/* TABELA HEADER */}
+      <View style={styles.tableHeader}>
+        <Text style={[styles.th, { flex: 1.2 }]}>Colab</Text>
+        <Text style={[styles.th, { flex: 1.5 }]}>Cliente</Text>
+        <Text style={[styles.th, { flex: 1.2 }]}>Contato</Text>
+        <Text style={[styles.th, { flex: 1.2 }]}>Data</Text>
+        <Text style={[styles.th, { flex: 1 }]}>Valor</Text>
+      </View>
+
+      {/* LISTA */}
+      <FlatList
+        data={lista}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <View style={styles.tableRow}>
+            {/* COLABORADOR */}
+            <View style={{ flex: 1.2 }}>
+              <Text style={styles.sub}>{item.user}</Text>
+            </View>
+
+            {/* CLIENTE */}
+            <View style={{ flex: 1.5 }}>
+              <Text style={styles.nome}>{item.nome}</Text>
+            </View>
+
+            {/* CONTATO */}
+            <View style={{ flex: 1.2 }}>
+              <Text style={styles.text}>{item.telefone}</Text>
+            </View>
+
+            {/* DATA */}
+            <View style={{ flex: 1.2 }}>
+              <Text style={styles.text}>{item.dataHora}</Text>
+            </View>
+
+            {/* VALOR */}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.valor}>R$ {item.valor}</Text>
+            </View>
+          </View>
+        )}
+        ListEmptyComponent={
+          <Text style={{ textAlign: 'center', marginTop: 30, color: '#999' }}>
+            Nenhum agendamento
+          </Text>
+        }
+      />
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
-  contentSelecao: { flex: 1, justifyContent: 'center', padding: 30 },
-  tituloLogo: { fontSize: 42, fontWeight: '900', color: '#1A1A1A', textAlign: 'center', letterSpacing: -1 },
-  subtitulo: { textAlign: 'center', color: '#666', marginBottom: 40, fontSize: 16 },
-  grid: { gap: 15 },
-  cardEscolha: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', padding: 25, borderRadius: 18, borderWidth: 1, borderColor: '#EEE' },
-  emojiCard: { fontSize: 32, marginRight: 20 },
-  cardTexto: { fontSize: 19, fontWeight: 'bold', color: '#333' },
-  headerAdmin: { padding: 20, borderBottomWidth: 1, borderColor: '#F0F0F0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF' },
-  voltarLink: { color: '#3498DB', fontWeight: 'bold', fontSize: 14 },
-  tituloAdmin: { fontSize: 18, fontWeight: '800', color: '#2C3E50' },
-  formContainer: { padding: 15, backgroundColor: '#F9FBFD', borderBottomWidth: 1, borderColor: '#EEE' },
-  row: { flexDirection: 'row' },
-  input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DCDDE1', padding: 12, borderRadius: 10, marginBottom: 10 },
-  botaoSalvar: { backgroundColor: '#27AE60', padding: 16, borderRadius: 10, alignItems: 'center' },
-  botaoTexto: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-  tabelaHeader: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#F1F2F6' },
-  tabelaHeaderTexto: { flex: 1, fontSize: 10, fontWeight: 'bold', color: '#95A5A6' },
-  tabelaLinha: { flexDirection: 'row', padding: 18, borderBottomWidth: 1, borderColor: '#F0F0F0', alignItems: 'center' },
-  tabelaData: { fontSize: 11, color: '#3498DB', fontWeight: 'bold' },
-  tabelaTextoNome: { fontSize: 15, fontWeight: 'bold', color: '#2C3E50' },
-  tabelaTextoSub: { fontSize: 12, color: '#95A5A6' },
-  tabelaTextoServico: { fontSize: 14, color: '#34495E' },
-  tabelaTextoValor: { fontSize: 15, fontWeight: 'bold', color: '#27AE60' },
-  vazio: { textAlign: 'center', marginTop: 50, color: '#BDC3C7' }
+  center: { flex: 1, justifyContent: 'center', padding: 20 },
+
+  container: { flex: 1, padding: 20 },
+
+  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 15 },
+
+  input: {
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 10,
+    borderRadius: 8,
+  },
+
+  btn: {
+    backgroundColor: '#27AE60',
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+
+  btnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+
+  card: {
+    padding: 15,
+    backgroundColor: '#eee',
+    marginBottom: 10,
+    borderRadius: 10,
+  },
+
+  voltar: {
+    color: 'blue',
+    marginBottom: 10,
+  },
+
+  
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F2F6',
+    padding: 10,
+    marginTop: 15,
+    borderRadius: 8,
+  },
+
+  th: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#7F8C8D',
+  },
+
+  tableRow: {
+    flexDirection: 'row',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderColor: '#EEE',
+    alignItems: 'center',
+  },
+
+  nome: {
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+
+  sub: {
+    fontSize: 11,
+    color: '#999',
+  },
+
+  text: {
+    fontSize: 13,
+  },
+
+  valor: {
+    fontWeight: 'bold',
+    color: '#27AE60',
+  },
 });
